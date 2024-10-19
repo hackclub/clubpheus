@@ -1,1 +1,1 @@
-web: python -m shroud
+worker: python -m shroud
