@@ -26,71 +26,80 @@ SLACK_APP_TOKEN = settings.slack_app_token
 
 app = App(token=SLACK_BOT_TOKEN, raise_error_for_unhandled_request=True)
 
+# TODO: Split this into multiple files
+# TODO: Make a function to check if the thread is a relay
 
 # https://api.slack.com/events/message.im
 @app.event("message")
 def handle_message(event, say: Say, client: WebClient, respond: Respond):
-
-    # Ignore messages from the bot itself
-    # if event.get("subtype") == "bot_message":
-    #     return
-    
+    # If the event is a subtype, ignore it
+    # If it's message_changed, send an ephemeral message to the user stating that the bot doesn't support edits and deletions
+    if event.get("subtype") != "message_changed" and event.get("subtype") is not None and event.get("subtype") != "message_deleted":
+        print(f"Received an event with subtype: {event.get('subtype')}; ignoring it.")
+        return
 
     # Handle incoming DMs
-    if event.get("channel_type") == "im" and event.get("subtype") is None:
+    if event.get("channel_type") == "im":
+
+        if event.get("subtype") == "message_changed" or event.get("subtype") == "message_deleted":
+            client.chat_postEphemeral(
+            channel=event["channel"],
+            user=event["previous_message"]["user"],
+            text="It seems you might have updated a message. This bot only supports forwarding messages, at the moment. Thus, edits and deletions will not be forwarded.",
+        )
+            return
+
         # Existing conversation
         if event.get("thread_ts") is not None:
             try:
                 record = db.get_message_by_ts(event["thread_ts"])["fields"]
+            except ValueError:
+                client.chat_postEphemeral(
+                    channel=event["channel"],
+                    user=event["user"],
+                    text="No relay found for this thread.",
+                )
+            else:
                 to_send = f"{event['text']}"
                 client.chat_postMessage(
                     channel=settings.channel,
                     text=to_send,
                     thread_ts=record["forwarded_ts"],
                 )
-            except ValueError:
-                client.chat_postEphemeral(
-                    channel=event["channel"],
-                    user=event["user"],
-                    text="No message found",
-                )
         # New conversation
         else:
             utils.begin_forward(event, client)
     # Handle incoming messages in channels
-    elif (
-        event.get("channel_type") == "group" or event.get("channel_type") == "channel"
-    ) and event.get("subtype") is None:
+    elif event.get("channel_type") == "group" or event.get("channel_type") == "channel":
         # We only care about messages that are threads
-        if event.get("thread_ts", None) is not None:
+        # For now, until the code for checking handling message update subtype is implemented, we can't ignore subtype messages since they don't have a thread_ts field
+        # They do have a `previous_message` field that can be used for checking if it's in a relay
+        if event.get("thread_ts", None) is not None or event.get("subtype") is not None:
             try:
-                record = db.get_message_by_ts(event["thread_ts"])["fields"]
-
-                client.chat_postMessage(
-                    channel=record["dm_channel"],
-                    text=event["text"],
-                    thread_ts=record["dm_ts"],
-                    username=utils.get_name(event["user"], client),
-                    icon_url=utils.get_profile_picture_url(event["user"], client),
-                )
+                if event.get("subtype") == "message_changed" or event.get("subtype") == "message_deleted":
+                    thread_ts = event["previous_message"]["thread_ts"]
+                else:
+                    thread_ts = event["thread_ts"]
+                    
+                record = db.get_message_by_ts(thread_ts)["fields"]
             except ValueError:
                 # In cases where a channel is being used for more than just forwarding, there will generally be replies to threads that are not relays.
                 print("Recieved a message in a thread that's not a relay")
-                # client.chat_postEphemeral(
-                #     channel=event["channel"],
-                #     user=event["user"],
-                #     text="No message found",
-                # )
-    elif event.get("subtype") == "message_changed":
-        client.chat_postEphemeral(
-            channel=event["channel"],
-            user=event["previous_message"]["user"],
-            text="It seems you might have updated a message. This bot only supports forwarding messages, at the moment. Thus, edits and deletions will not be forwarded.",
-        )
-    else:
-        print("Ignoring message event")
-    # else:
-    # print(event)
+            else:
+                if event.get("subtype") == "message_changed" or event.get("subtype") == "message_deleted":
+                    client.chat_postEphemeral(
+                        channel=event["channel"],
+                        user=event["previous_message"]["user"],
+                        text="It seems you might have updated a message. This bot only supports forwarding messages, at the moment. Thus, edits and deletions will not be forwarded.",
+                    )
+                else:
+                    client.chat_postMessage(
+                        channel=record["dm_channel"],
+                        text=event["text"],
+                        thread_ts=record["dm_ts"],
+                        username=utils.get_name(event["user"], client),
+                        icon_url=utils.get_profile_picture_url(event["user"], client),
+                    )
 
 
 #######################
@@ -135,7 +144,9 @@ def handle_submission(ack, body, say, client: WebClient):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "This report has been submitted." if user_selection == "with_username" else "This report has been submitted anonymously."
+                        "text": "This report has been submitted."
+                        if user_selection == "with_username"
+                        else "This report has been submitted anonymously.",
                     },
                 }
             ],
@@ -143,10 +154,14 @@ def handle_submission(ack, body, say, client: WebClient):
         )
 
         forwarded_ts = client.chat_postMessage(
-            channel=settings.channel, text=original_text,
-
-            username=utils.get_name(user_id, client) if user_selection == "with_username" else None,
-            icon_url=utils.get_profile_picture_url(user_id, client) if user_selection == "with_username" else None,
+            channel=settings.channel,
+            text=original_text,
+            username=utils.get_name(user_id, client)
+            if user_selection == "with_username"
+            else None,
+            icon_url=utils.get_profile_picture_url(user_id, client)
+            if user_selection == "with_username"
+            else None,
         ).data["ts"]
         db.save_forwarded_ts(
             dm_ts=message_record["fields"]["dm_ts"], forwarded_ts=forwarded_ts
