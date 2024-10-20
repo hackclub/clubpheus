@@ -74,11 +74,13 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond):
                     icon_url=utils.get_profile_picture_url(event["user"], client),
                 )
             except ValueError:
-                client.chat_postEphemeral(
-                    channel=event["channel"],
-                    user=event["user"],
-                    text="No message found",
-                )
+                # In cases where a channel is being used for more than just forwarding, there will generally be replies to threads that are not relays.
+                print("Recieved a message in a thread that's not a relay")
+                # client.chat_postEphemeral(
+                #     channel=event["channel"],
+                #     user=event["user"],
+                #     text="No message found",
+                # )
     elif event.get("subtype") == "message_changed":
         client.chat_postEphemeral(
             channel=event["channel"],
