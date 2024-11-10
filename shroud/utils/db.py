@@ -82,6 +82,7 @@ def save_selection(selection_ts, selection) -> None:
     record = table.first(formula=match({"selection_ts": selection_ts}))
     if record is None:
         raise ValueError(f"Record with timestamp {selection_ts} not found")
+    
     table.update(record["id"], {"selection": selection})
 
 
@@ -100,7 +101,8 @@ def get_message_by_ts(ts) -> dict:
     )
     record = table.first(formula=formula)
     if record is None:
-        raise ValueError(f"Record with timestamp {ts} not found")
+        return None
+        # raise ValueError(f"Record with timestamp {ts} not found")
     return record
 
 

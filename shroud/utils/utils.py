@@ -1,5 +1,7 @@
 from slack_sdk import WebClient
+from shroud import settings
 from shroud.utils import db
+from typing import Any, Dict
 
 
 def get_message_body_by_ts(ts: str, channel: str, client: WebClient) -> str:
@@ -71,9 +73,18 @@ def begin_forward(event: dict, client: WebClient) -> str:
         ],
     )
     selection_ts = selection_prompt.data["ts"]
-    
+
     db.save_forward_start(
         dm_ts=event["ts"],
         selection_ts=selection_ts,
         dm_channel=event["channel"],
     )
+
+# def is_thread(event: Dict[str, Any]) -> bool:
+#     return "thread_ts" in event
+#     # return "thread_ts" in event or "thread_ts" in event.get("previous_message", {})
+
+def apply_command_prefix(command: str) -> str:
+    command = f"/{settings.command_prefix}{command}"
+    print(f"Adding command {command}")
+    return command
