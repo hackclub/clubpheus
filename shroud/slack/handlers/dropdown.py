@@ -23,11 +23,14 @@ def handle_submission(ack, body, say, client: WebClient):
     message_record = db.get_message_by_ts(body["message"]["ts"])
     user_selection = message_record.get("fields", {}).get("selection", None)
     if user_selection is not None:
-        original_text = utils.get_message_body_by_ts(
+        message = utils.get_message_by_ts(
             ts=message_record["fields"]["dm_ts"],
             channel=message_record["fields"]["dm_channel"],
             client=client,
         )
+        original_text = message["text"]
+        attachments = message.get("attachments", [])
+
         # TODO: Update the message instead of sending a new one (perhaps)
         # if user_selection == "anonymous":
         #     # Forward anonymously
@@ -56,6 +59,7 @@ def handle_submission(ack, body, say, client: WebClient):
         forwarded_ts = client.chat_postMessage(
             channel=settings.channel,
             text=original_text,
+            attachments=attachments,
             username=utils.get_name(user_id, client)
             if user_selection == "with_username"
             else None,

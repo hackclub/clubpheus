@@ -5,23 +5,32 @@ from shroud.slack import app
 from shroud.utils import db, utils
 from slack_bolt.context.respond import Respond
 
+# Subtypes to be weary of:
+# message_changed: can mean that a message embed was unfurled
+# file_share: a file was sent. text is in event["text"]; 
+
+# acceptable_subtypes = ["message_changed", "file_share"]
 
 # https://api.slack.com/events/message.im
 @app.event("message")
-def handle_message(event, say: Say, client: WebClient, respond: Respond):
-  
+def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
+    # Acknowledge the event
+    ack()
+
     if event.get("thread_ts") is not None:
         lookup_ts = event["thread_ts"]
     elif event.get("previous_message", {}).get("thread_ts") is not None:
         lookup_ts = event["previous_message"]["thread_ts"]
     else:
         lookup_ts = event["ts"]
-     # Get the record from the database. Only notify the user if the event is a DM
+    
+    # Get the record from the database. Only notify the user if the event is a DM
     record = db.get_message_by_ts(
         lookup_ts
     )
     if record is None:
-        if event.get("channel_type") == "im" and event.get("subtype") is None:
+        # If it's not in acceptable subtypes, it probably isn't a message that should be relayed and that's why there might not be a record
+        if event.get("channel_type") == "im" and (event.get("subtype") is None):
             if event.get("thread_ts") is None:
                 utils.begin_forward(event, client)
             else:
@@ -39,13 +48,13 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond):
     # If the event is a subtype, ignore it
     # If it's message_changed, send an ephemeral message to the user stating that the bot doesn't support edits and deletions
     if (
-        event.get("subtype") == "message_changed"
-        or event.get("subtype") == "message_deleted"
+        (event.get("subtype") == "message_changed"
+        or event.get("subtype") == "message_deleted")
     ):
         client.chat_postEphemeral(
             channel=event["channel"],
             user=event["previous_message"]["user"],
-            text="It seems you might have updated a message. This bot only supports forwarding messages, at the moment. Thus, edits and deletions will not be forwarded.",
+            text="It seems you might have updated a message. Whilst edits and deletions are not forwarded (there isn't a log of every message), if you had an embed unfurl immediately after sending, it probably got forwarded correctly and you can ignore this message.",
         )
         return
     elif event.get("subtype") is not None:
@@ -75,6 +84,7 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond):
                 channel=settings.channel,
                 text=to_send,
                 thread_ts=record["forwarded_ts"],
+                attachments=utils.get_message_by_ts(event["ts"], event["channel"], client).get("attachments"),
             )
     # Handle incoming messages in channels
     # A group is a private channel and a channel is a public channel
@@ -83,6 +93,7 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond):
             channel=record["dm_channel"],
             text=event["text"],
             thread_ts=record["dm_ts"],
+            attachments = utils.get_message_by_ts(event["ts"], event["channel"], client).get("attachments"),
             username=utils.get_name(event["user"], client),
             icon_url=utils.get_profile_picture_url(event["user"], client),
         )

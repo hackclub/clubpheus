@@ -1,17 +1,25 @@
 from slack_sdk import WebClient
 from shroud import settings
 from shroud.utils import db
-from typing import Any, Dict
+# from typing import Any, Dict
 
 
-def get_message_body_by_ts(ts: str, channel: str, client: WebClient) -> str:
+
+def get_message_by_ts(ts: str, channel: str, client: WebClient) -> str:
     try:
         message = client.conversations_history(
             channel=channel, oldest=ts, inclusive=True, limit=1
         ).data["messages"][0]
-        return message["text"]
+        return message
     except IndexError:
-        return None
+        # This might be because it's a threaded message
+        try:
+            message = client.conversations_replies(
+                channel=channel, ts=ts, oldest=ts, inclusive=True, limit=1).data["messages"][0]
+            return message
+        except IndexError:
+            return None
+
 
 
 def get_profile_picture_url(user_id, client: WebClient) -> str:

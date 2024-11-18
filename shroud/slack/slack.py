@@ -27,7 +27,7 @@ def handle_errors(error, body, respond: Respond):
     if isinstance(error, BoltUnhandledRequestError):
         return BoltResponse(status=200, body="")
     else:
-        print(f"Error: {str(error)}")
+        print(f"Error: {str(error)}")   
         try:
             respond(
                 "Something went wrong. If this persists, please contact <@U075RTSLDQ8>."
