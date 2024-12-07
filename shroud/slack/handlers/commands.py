@@ -21,7 +21,7 @@ def clean_db(ack, respond: Respond, client: WebClient):
 def help_command(ack, respond: Respond):
     ack()
     # The package looks like shroud.slack and we only want shroud/manifest.yml
-    manifest_path = importlib.resources.files(__package__.split(".")[0]) / "manifest.yml"
+    manifest_path = importlib.resources.files(__package__.split(".")[0]).parent / "manifest.yml"
     with open(manifest_path, "r") as f:
         features = yaml.safe_load(f)["features"]
 
