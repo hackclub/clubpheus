@@ -30,6 +30,7 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
     )
     if record is None:
         # If it's not in acceptable subtypes, it probably isn't a message that should be relayed and that's why there might not be a record
+        # However, if it's a message in a DM, it probably should be relayed since that means the user is trying to start a relay
         if event.get("channel_type") == "im" and (event.get("subtype") is None):
             if event.get("thread_ts") is None:
                 utils.begin_forward(event, client)
@@ -86,9 +87,13 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
                 thread_ts=record["forwarded_ts"],
                 attachments=utils.get_message_by_ts(event["ts"], event["channel"], client).get("attachments"),
             )
+
     # Handle incoming messages in channels
     # A group is a private channel and a channel is a public channel
     elif event.get("channel_type") == "group" or event.get("channel_type") == "channel":
+        # Only forward if the message is not prefixed with `!`
+        if event["text"].startswith("!"):
+            return
         client.chat_postMessage(
             channel=record["dm_channel"],
             text=event["text"],
