@@ -84,6 +84,7 @@ def begin_forward(event: dict, client: WebClient) -> str:
 
     db.save_forward_start(
         dm_ts=event["ts"],
+        content=event["text"],
         selection_ts=selection_ts,
         dm_channel=event["channel"],
     )

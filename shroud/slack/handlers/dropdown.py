@@ -67,7 +67,7 @@ def handle_submission(ack, body, say, client: WebClient):
             if user_selection == "with_username"
             else None,
         ).data["ts"]
-        db.save_forwarded_ts(
+        db.finish_forward(
             dm_ts=message_record["fields"]["dm_ts"], forwarded_ts=forwarded_ts
         )
         client.chat_postEphemeral(

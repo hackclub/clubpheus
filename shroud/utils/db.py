@@ -57,24 +57,25 @@ def clean_database(client: WebClient) -> None:
                     break
 
 
-def save_forward_start(dm_ts, selection_ts, dm_channel) -> None:
+def save_forward_start(content: str, dm_ts: str, selection_ts: str, dm_channel: str) -> None:
     global table
     table.create(
         {
             "dm_ts": dm_ts,
+            "content": content,
             "selection_ts": selection_ts,
-            # "forwarded_ts": forwarded_ts,
             "dm_channel": dm_channel,
         }
     )
 
 
-def save_forwarded_ts(dm_ts, forwarded_ts) -> None:
+def finish_forward(dm_ts, forwarded_ts) -> None:
     global table
     record = table.first(formula=match({"dm_ts": dm_ts}))
     if record is None:
         raise ValueError(f"Record with timestamp {dm_ts} not found")
-    table.update(record["id"], {"forwarded_ts": forwarded_ts})
+    # Empty the selection so it's harder to figure out anonymous reports if a user sends an indentifiable message
+    table.update(record["id"], {"forwarded_ts": forwarded_ts, "selection": None})
 
 
 def save_selection(selection_ts, selection) -> None:
