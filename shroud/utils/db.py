@@ -47,7 +47,8 @@ def clean_database(client: WebClient) -> None:
                 )
             except KeyError:
                 table.delete(full_record["id"])
-
+                continue
+            
             if len(messages) < 2:
                 table.delete(full_record["id"])
 
