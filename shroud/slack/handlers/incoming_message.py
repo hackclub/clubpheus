@@ -93,12 +93,18 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
     elif event.get("channel_type") == "group" or event.get("channel_type") == "channel":
         # Only forward if the message is not prefixed with `!`
         if event["text"].startswith("!"):
-            return
-        client.chat_postMessage(
-            channel=record["dm_channel"],
-            text=event["text"],
-            thread_ts=record["dm_ts"],
-            attachments = utils.get_message_by_ts(event["ts"], event["channel"], client).get("attachments"),
-            username=utils.get_name(event["user"], client),
-            icon_url=utils.get_profile_picture_url(event["user"], client),
-        )
+            client.chat_postEphemeral(
+                channel=event["channel"],
+                thread_ts=event["ts"],
+                user=event["user"],
+                text="`!` does nothing. By default, messages are not forwarded unless `?` is prepended to them.",
+            )
+        elif event["text"].startswith("?"): 
+            client.chat_postMessage(
+                channel=record["dm_channel"],
+                text=event["text"],
+                thread_ts=record["dm_ts"],
+                attachments = utils.get_message_by_ts(event["ts"], event["channel"], client).get("attachments"),
+                username=utils.get_name(event["user"], client),
+                icon_url=utils.get_profile_picture_url(event["user"], client),
+            )
