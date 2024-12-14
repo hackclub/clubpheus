@@ -102,7 +102,8 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
         elif event["text"].startswith("?"): 
             client.chat_postMessage(
                 channel=record["dm_channel"],
-                text=event["text"],
+                # # Remove the '?' and since sometimes there's a space after it, remove that too (if it exists)
+                text=event["text"][2:] if event["text"].startswith("? ") else event["text"][1:],
                 thread_ts=record["dm_ts"],
                 attachments = utils.get_message_by_ts(event["ts"], event["channel"], client).get("attachments"),
                 username=utils.get_name(event["user"], client),
