@@ -66,6 +66,8 @@ def handle_submission(ack, body, say, client: WebClient):
             icon_url=utils.get_profile_picture_url(user_id, client)
             if user_selection == "with_username"
             else None,
+            # Setting this to false will prevent the second embed sometimes but won't link it nor show the channel, it seems
+            # unfurl_links=False,
         ).data["ts"]
         db.finish_forward(
             dm_ts=message_record["fields"]["dm_ts"], forwarded_ts=forwarded_ts

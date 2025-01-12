@@ -1,15 +1,120 @@
+from enum import Enum
 from slack_bolt.context.say import Say
 from slack_sdk import WebClient
 from shroud import settings
 from shroud.slack import app
 from shroud.utils import db, utils
 from slack_bolt.context.respond import Respond
+from pydantic import BaseModel, StringConstraints, computed_field
+from typing import Annotated, Any
 
-# Subtypes to be weary of:
-# message_changed: can mean that a message embed was unfurled
-# file_share: a file was sent. text is in event["text"]; 
 
-# acceptable_subtypes = ["message_changed", "file_share"]
+class ValidationRegexs(Enum):
+    channel = r"^[CGD][A-Z0-9]{10}$"
+    ts = r"^[0-9]{10}\.[0-9]{6}$"
+    user = r"^U[A-Z0-9]{8,}$"
+
+
+class MessageEvent(BaseModel):
+    channel: Annotated[str, StringConstraints(pattern=ValidationRegexs.channel.value)]
+    thread_ts: (
+        Annotated[str, StringConstraints(pattern=ValidationRegexs.ts.value)] | None
+    ) = None
+    ts: Annotated[str, StringConstraints(pattern=ValidationRegexs.ts.value)]
+    user: Annotated[str, StringConstraints(pattern=ValidationRegexs.user.value)]
+    content: str = None
+    content_post_update: str = None
+    # Probably only needs to be for message_changed
+    attachments: list[Any] = []
+
+    class Subtypes(str, Enum):
+        message_changed = "message_changed"
+        # file_share = "file_share"
+        message_deleted = "message_deleted"
+        normal = "normal"
+        other = "other"
+
+        @classmethod
+        def _missing_(cls, value):
+            if value is None:
+                return cls.normal
+            else:
+                # raise ValueError(f"{value} is not a valid {cls.__name__}")
+                # print("INFO: Received an event with subtype {value} that is not handled; ignoring it.")
+                return cls.other
+
+    subtype: Subtypes
+
+    @computed_field
+    @property
+    def record(self) -> dict:
+        fetched_result = db.get_message_by_ts(self.thread_ts or self.ts)
+        return None if fetched_result is None else fetched_result["fields"]
+
+    class Target(BaseModel):
+        channel: Annotated[
+            str, StringConstraints(pattern=ValidationRegexs.channel.value)
+        ]
+        thread_ts: (
+            Annotated[str, StringConstraints(pattern=ValidationRegexs.ts.value)] | None
+        ) = None
+
+    # class ForceReturn(Exception):
+    #     """
+    #     Error to be raised when the message event handling should be stopped as the event doesn't need to be handled
+    #     """
+    #     pass
+
+    # Don't return_to_sender if outside a DM or confirmed relay
+    return_to_sender: bool = False
+
+    # def is_im(self, client: WebClient) -> bool:
+    # return client.conversations_info(channel=self.channel).data["channel"]["is_im"]
+    @computed_field
+    @property
+    def is_dm(self) -> bool:
+        return self.channel.startswith("D")
+
+    class PrefixInfo(BaseModel):
+        should_forward: bool
+        content_without_prefix: str
+
+    @computed_field
+    @property
+    def get_prefix_info(self) -> PrefixInfo:
+        content = self.content_post_update or self.content
+        if content.startswith("?"):
+            return self.PrefixInfo(
+                should_forward=True,
+                # Remove the '?' and since sometimes there's a space after it, remove that too (if it exists)
+                # If it is an edited message, send the content with the edit statement otherwise remove the prefix and send it
+                content_without_prefix=(content[2:] if content.startswith("? ") else content[1:]) if not self.content_post_update else self.content
+            )
+        return self.PrefixInfo(should_forward=False, content_without_prefix=content)
+
+    # Shouldn't be used since as of now, there is no check for if it's DM -> channel or channel -> DM
+    # @computed_field
+    # @property
+    # def target_channel(self) -> Target:
+    #     if self.return_to_sender:
+    #         return self.Target(
+    #             channel=self.user,
+    #             thread_ts=None
+    #         )
+    #     else:
+    #         if self.thread_ts is None:
+    #             return self.Target(
+    #                 channel=self.channel,
+    #                 thread_ts=None
+    #             )
+    #         return self.Target(
+    #             channel=settings.channel,
+    #             thread_ts=self.record("forwarded_ts")
+    #         )
+
+    # https://docs.pydantic.dev/2.3/usage/computed_fields/
+    # @<function_name>.setter can also be used with a @computed_field with the same function name
+
 
 # https://api.slack.com/events/message.im
 @app.event("message")
@@ -17,95 +122,96 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
     # Acknowledge the event
     ack()
 
-    if event.get("thread_ts") is not None:
-        lookup_ts = event["thread_ts"]
-    elif event.get("previous_message", {}).get("thread_ts") is not None:
-        lookup_ts = event["previous_message"]["thread_ts"]
-    else:
-        lookup_ts = event["ts"]
-    
-    # Get the record from the database. Only notify the user if the event is a DM
-    record = db.get_message_by_ts(
-        lookup_ts
-    )
-    if record is None:
-        # If it's not in acceptable subtypes, it probably isn't a message that should be relayed and that's why there might not be a record
-        # However, if it's a message in a DM, it probably should be relayed since that means the user is trying to start a relay
-        if event.get("channel_type") == "im" and (event.get("subtype") is None):
-            if event.get("thread_ts") is None:
-                utils.begin_forward(event, client)
-            else:
-                client.chat_postEphemeral(
-                channel=event["channel"],
-                user=event["user"],
-                text="No relay found for this thread.",
-            )
-        else:
-            print("No relay found for this ts.")
-        # Return, don't error, since the bot might not be in a channel solely for relays
+    # Depending on the subtype, pull out appropriate data and initialize the message model
+    # https://api.slack.com/events/message#subtypes
+    subtype = MessageEvent.Subtypes(event.get("subtype"))
+
+    # Deleting a message in a relay results in a message_changed event with a differing reply_count and potentially a different latest_reply
+    # In this case, the top-level message will always be a bot_message that shouldn't change so it's easy to just ignore it if a bot message is changed
+    # If there's another random thread that's not a relay that has a reply deleted or edited it'll be ignored anyway since there is no record for that relay
+    if event.get("message", {}).get("subtype") == "bot_message":
+        print("INFO: Received a bot message or update; ignoring it.")
         return
-    record = record["fields"]
-  
-    # If the event is a subtype, ignore it
-    # If it's message_changed, send an ephemeral message to the user stating that the bot doesn't support edits and deletions
-    if (
-        (event.get("subtype") == "message_changed"
-        or event.get("subtype") == "message_deleted")
-    ):
+
+    match subtype:
+        case MessageEvent.Subtypes.normal:
+            message = MessageEvent(
+                channel=event["channel"],
+                thread_ts=event.get("thread_ts"),
+                ts=event["ts"],
+                user=event.get("user"),
+                content=event["text"],
+                subtype=subtype,
+            )
+        case MessageEvent.Subtypes.message_changed:
+            user = event["message"]["user"]
+            # https://api.slack.com/events/message/message_changed
+            # to_send = f"<@{user}> updated a <{client.chat_getPermalink(channel=event['channel'], message_ts=event["message"]["ts"]).data["permalink"]}|message> to {event["message"]["text"]}"
+            # Initally linked the message... before realizing the user probably wouldn't have access to the linked message. Embed it eventually?
+            to_send = f"<@{user}> updated a message to {event["message"]["text"]}"
+            message = MessageEvent(
+                channel=event["channel"],
+                subtype=subtype,
+                ts=event["message"]["ts"],
+                content=to_send,
+                content_post_update=event["message"]["text"],
+                user=user,
+                thread_ts=event["message"].get("thread_ts"),
+                attachments=event["message"].get("attachments", []),
+            )
+        case MessageEvent.Subtypes.message_deleted:
+            message = MessageEvent(
+                channel=event["channel"],
+                subtype=subtype,
+                ts=event["deleted_ts"],
+                user=event["previous_message"]["user"],
+                thread_ts=event["previous_message"].get("thread_ts"),
+                return_to_sender=True,
+                content="Message deletions are not forwarded.",
+            )
+        case MessageEvent.Subtypes.other:
+            return
+
+    if message.return_to_sender and (message.is_dm or message.record is not None):
         client.chat_postEphemeral(
-            channel=event["channel"],
-            user=event["previous_message"]["user"],
-            text="It seems you might have updated a message. Whilst edits and deletions are not forwarded (there isn't a log of every message), if you had an embed unfurl immediately after sending, it probably got forwarded correctly and you can ignore this message.",
+            channel=message.channel,
+            user=message.user,
+            text=message.content,
         )
-        return
-    elif event.get("subtype") is not None:
-        print(f"Received an event with subtype: {event.get('subtype')}; ignoring it.")
-        return
-    # If there is no ts at all and the subtype is none, something has definitely gone wrong
-    if event.get("ts") is None:
-        print(f"Received an event without a timestamp; ignoring: {event}")
-        raise ValueError("Event does not have a timestamp")
-
-
-    # Handle incoming DMs
-    if event.get("channel_type") == "im":
-        # Existing conversation
-        # Really no need for a conditional since if it was a top-level message, it would have been caught and a relay would have been started
-        if event.get("thread_ts") is not None:
-            if record.get("forwarded_ts") is None:
-                client.chat_postEphemeral(
-                    channel=event["channel"],
-                    user=event["user"],
-                    thread_ts=event["thread_ts"],
-                    text="This message isn't a relay. This might be because you haven't selected how to forward it, the bot didn't catch the message, or the message is invalid.",
-                )
-                return
-            to_send = f"{event['text']}"
-            client.chat_postMessage(
-                channel=settings.channel,
-                text=to_send,
-                thread_ts=record["forwarded_ts"],
-                attachments=utils.get_message_by_ts(event["ts"], event["channel"], client).get("attachments"),
-            )
-
-    # Handle incoming messages in channels
-    # A group is a private channel and a channel is a public channel
-    elif event.get("channel_type") == "group" or event.get("channel_type") == "channel":
-        # Only forward if the message is not prefixed with `!`
-        if event["text"].startswith("!"):
+    elif (
+        message.record is None
+        and message.is_dm
+        and message.subtype == MessageEvent.Subtypes.normal
+    ):
+        utils.begin_forward(message, client)
+    elif message.record is not None and message.is_dm:
+        client.chat_postMessage(
+            channel=settings.channel,
+            text=message.content,
+            attachments=message.attachments,
+            thread_ts=message.record["forwarded_ts"],
+        )
+    elif message.record is not None and message.is_dm is False:
+        if message.content.startswith("!"):
             client.chat_postEphemeral(
-                channel=event["channel"],
-                thread_ts=event["ts"],
-                user=event["user"],
+                channel=message.record["dm_channel"],
+                thread_ts=message.record["dm_ts"],
+                user=message.user,
                 text="`!` does nothing. By default, messages are not forwarded unless `?` is prepended to them.",
             )
-        elif event["text"].startswith("?"): 
+            return
+        prefix_info = message.get_prefix_info
+        if prefix_info.should_forward:
             client.chat_postMessage(
-                channel=record["dm_channel"],
-                # # Remove the '?' and since sometimes there's a space after it, remove that too (if it exists)
-                text=event["text"][2:] if event["text"].startswith("? ") else event["text"][1:],
-                thread_ts=record["dm_ts"],
-                attachments = utils.get_message_by_ts(event["ts"], event["channel"], client).get("attachments"),
-                username=utils.get_name(event["user"], client),
-                icon_url=utils.get_profile_picture_url(event["user"], client),
+                channel=message.record["dm_channel"],
+                thread_ts=message.record["dm_ts"],
+                text=prefix_info.content_without_prefix,
+                username=utils.get_name(message.user, client),
+                icon_url=utils.get_profile_picture_url(message.user, client),
             )
+        else:
+            print("INFO: received a message not prefixed with `!` or `?`; ignoring it.")
+    else:
+        print(
+            "INFO: received an event that is not a DM and has no record; ignoring it."
+        )

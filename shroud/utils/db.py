@@ -3,9 +3,15 @@ from pyairtable.formulas import match
 from shroud import settings
 from slack_sdk import WebClient
 
-
 table = None
 
+# class RelayRecord(BaseModel):
+#     dm_ts: Annotated[str, StringConstraints(pattern=r"^[0-9]{10}\.[0-9]{6}$")]
+#     forwarded_ts: Annotated[str, StringConstraints(pattern=r"^[0-9]{10}\.[0-9]{6}$")] = None
+#     selection_ts: Annotated[str, StringConstraints(pattern=r"^[0-9]{10}\.[0-9]{6}$")] = None
+#     content: str = None
+#     selection: str = None
+#     dm_channel: str = None
 
 def get_table() -> Table:
     api = Api(api_key=settings.airtable_token)

@@ -1,5 +1,6 @@
 from slack_sdk import WebClient
 from shroud import settings
+from shroud.slack.handlers.incoming_message import MessageEvent
 from shroud.utils import db
 # from typing import Any, Dict
 
@@ -33,10 +34,9 @@ def get_name(user_id, client: WebClient) -> str:
     return user_info.data["user"]["real_name"]
 
 
-def begin_forward(event: dict, client: WebClient) -> str:
-    channel_id = event["channel"]
+def begin_forward(message: MessageEvent, client: WebClient) -> str:
     selection_prompt = client.chat_postMessage(
-        channel=channel_id,
+        channel=message.channel,
         text="Select how this message should be forwarded",
         blocks=[
             {
@@ -83,10 +83,10 @@ def begin_forward(event: dict, client: WebClient) -> str:
     selection_ts = selection_prompt.data["ts"]
 
     db.save_forward_start(
-        dm_ts=event["ts"],
-        content=event["text"],
+        dm_ts=message.ts,
+        content=message.content,
         selection_ts=selection_ts,
-        dm_channel=event["channel"],
+        dm_channel=message.channel
     )
 
 # def is_thread(event: Dict[str, Any]) -> bool:
