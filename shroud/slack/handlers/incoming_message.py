@@ -92,26 +92,6 @@ class MessageEvent(BaseModel):
             )
         return self.PrefixInfo(should_forward=False, content_without_prefix=content)
 
-    # Shouldn't be used since as of now, there is no check for if it's DM -> channel or channel -> DM
-    # @computed_field
-    # @property
-    # def target_channel(self) -> Target:
-    #     if self.return_to_sender:
-    #         return self.Target(
-    #             channel=self.user,
-    #             thread_ts=None
-    #         )
-    #     else:
-    #         if self.thread_ts is None:
-    #             return self.Target(
-    #                 channel=self.channel,
-    #                 thread_ts=None
-    #             )
-    #         return self.Target(
-    #             channel=settings.channel,
-    #             thread_ts=self.record("forwarded_ts")
-    #         )
-
     # https://docs.pydantic.dev/2.3/usage/computed_fields/
     # @<function_name>.setter can also be used with a @computed_field with the same function name
 
@@ -145,16 +125,18 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
             )
         case MessageEvent.Subtypes.message_changed:
             user = event["message"]["user"]
+            original_text = event["previous_message"]["text"]
+            new_text = event["message"]["text"]
             # https://api.slack.com/events/message/message_changed
             # to_send = f"<@{user}> updated a <{client.chat_getPermalink(channel=event['channel'], message_ts=event["message"]["ts"]).data["permalink"]}|message> to {event["message"]["text"]}"
             # Initally linked the message... before realizing the user probably wouldn't have access to the linked message. Embed it eventually?
-            to_send = f"<@{user}> updated a message to {event["message"]["text"]}"
+            to_send = f"A message has been edited from ```{original_text}``` to ```{new_text}```"
             message = MessageEvent(
                 channel=event["channel"],
                 subtype=subtype,
                 ts=event["message"]["ts"],
                 content=to_send,
-                content_post_update=event["message"]["text"],
+                content_post_update=new_text,
                 user=user,
                 thread_ts=event["message"].get("thread_ts"),
                 attachments=event["message"].get("attachments", []),
