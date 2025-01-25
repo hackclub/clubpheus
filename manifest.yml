@@ -1,6 +1,6 @@
 display_information:
   name: Shroud
-  description: Anonymous reporting tool (WIP)
+  description: Anonymous reporting tool
   background_color: "#0b0067"
 features:
   bot_user:

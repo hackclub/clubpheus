@@ -1,6 +1,10 @@
 # Shroud  
-A Slack bot allowing for anonymous reports to be sent whilst allowing for bidirectional communication between the reporter and the recipient.  
+Shroud is a tool allowing for reports to be made to Fire Department (FD), Hack Club's conduct team. Shroud also allows for **bidirectional communication**, allowing FD to ask follow up questions. You can choose to be **anonymous or identifiable**.
+You can embed messages (including those that are private) by sending the including the link in your report. 
 [![Demo](shroud.gif)](shroud.mp4)
+
+
+
 
 ### Features
 * Send anonymous reports
@@ -37,3 +41,6 @@ poetry run python -m shroud
 ### Usage
 Upon a direct message being sent to the bot, the bot will forward the message to the specified channel. The recipient(s) can then respond to the message in the thread, which will be relayed to the anonymous reporter's DM with the bot.  
 To clean broken database records, run the `/shroud-clean-db` command.  
+
+
+Files are not yet supported, but a file hosting service can be used to host a file and embed via a link.
