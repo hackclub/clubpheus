@@ -1,7 +1,7 @@
 # Shroud  
 Shroud is a tool allowing for reports to be made to Fire Department (FD), Hack Club's conduct team. Shroud also allows for **bidirectional communication**, allowing FD to ask follow up questions. You can choose to be **anonymous or identifiable**.
 You can embed messages (including those that are private) by sending the including the link in your report. 
-[![Demo](shroud.gif)](shroud.mp4)
+[![Demo](https://raw.githubusercontent.com/hackclub/shroud/refs/heads/main/shroud.gif)](https://raw.githubusercontent.com/hackclub/shroud/refs/heads/main/shroud.mp4)
 
 
 
