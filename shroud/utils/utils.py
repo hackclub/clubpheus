@@ -1,8 +1,9 @@
 from slack_sdk import WebClient
 from shroud import settings
-from shroud.slack.handlers.incoming_message import MessageEvent
 from shroud.utils import db
-# from typing import Any, Dict
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from shroud.slack.handlers.incoming_message import MessageEvent
 
 
 
@@ -34,7 +35,7 @@ def get_name(user_id, client: WebClient) -> str:
     return user_info.data["user"]["real_name"]
 
 
-def begin_forward(message: MessageEvent, client: WebClient) -> str:
+def begin_forward(message: "MessageEvent", client: WebClient) -> str:
     selection_prompt = client.chat_postMessage(
         channel=message.channel,
         text="Select how this message should be forwarded",

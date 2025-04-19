@@ -16,7 +16,7 @@ features:
     - command: /shroud-create-dm
       description: Create a DM group with all FD members and the specified user.
       usage_hint: user
-      should_escape: false
+      should_escape: true
 oauth_config:
   scopes:
     bot:
@@ -30,6 +30,8 @@ oauth_config:
       - users:read
       - groups:write
       - channels:read
+      - groups:read
+      - mpim:write
 settings:
   event_subscriptions:
     bot_events:
