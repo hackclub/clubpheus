@@ -39,6 +39,7 @@ def begin_forward(message: "MessageEvent", client: WebClient) -> str:
     selection_prompt = client.chat_postMessage(
         channel=message.channel,
         text="Select how this message should be forwarded",
+        thread_ts=message.ts,  # Thread the prompt under the user's message
         blocks=[
             {
                 "type": "section",
