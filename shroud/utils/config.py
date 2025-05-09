@@ -47,8 +47,8 @@ settings.validators.register(
             default="",
         ),
         Validator(
-            "command_prefix",
-            default="shroud-",
+            "app_name",
+            default="shroud",
         ),
     ],
 )

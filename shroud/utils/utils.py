@@ -96,6 +96,6 @@ def begin_forward(message: "MessageEvent", client: WebClient) -> str:
 #     # return "thread_ts" in event or "thread_ts" in event.get("previous_message", {})
 
 def apply_command_prefix(command: str) -> str:
-    command = f"/{settings.command_prefix}{command}"
+    command = f"/{settings.app_name}-{command}"
     print(f"Adding command {command}")
     return command

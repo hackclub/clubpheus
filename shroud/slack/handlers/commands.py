@@ -30,34 +30,101 @@ def create_dm(ack, respond: Respond, client: WebClient, command):
         respond("Unable to extract user ID.")
         return
 
-    # Check if the user is in the allowlist channel
+    # Create a ~~DM~~ private channel with the target user and the person who ran the command
     try:
-        members = client.conversations_members(channel=allowlist_channel)["members"]
-        if user_id not in members:
-            respond("You are not authorized to use this command.")
+        invite_users = [user_id, target_user]
+        channel_name= f"{settings.app_name}-{target_user.lower()}"
+        private_channel = client.conversations_create(
+            name=channel_name,
+            is_private=True,
+        )["channel"]["id"]
+        existed = False
+    except Exception as e:
+        if e.response["error"] == "name_taken":
+            respond("A DM with this name already exists.")
+        else:
+            respond(f"Failed to create DM: {e}")
+        # Get the channel ID from channel_name
+        private_channel = client.conversations_list(types="private_channel")["channels"]
+        # next function retrieves the first matching channel from the generator.
+        # If no match is found, it returns None.
+        private_channel = next(
+            (channel for channel in private_channel if channel["name"] == channel_name),
+            None,
+        )
+        if private_channel is None:
+            respond("Unable to find the private channel.")
             return
-    except Exception as e:
-        respond(f"Failed to verify authorization: {e}")
-        return
-
-    # Fetch all members in the allowlist channel
+        private_channel = private_channel["id"]
+        existed = True
+    else:
+        respond(f"Created a prviate channel <#{private_channel}>")
     try:
-        members = client.conversations_members(channel=allowlist_channel)["members"]
-    except Exception as e:
-        respond(f"Failed to fetch members of the allowlist channel: {e}")
-        return
-
-    # Create a DM with the target user and all allowlist members
-    try:
-        dm_users = [target_user] + members
-        dm_channel = client.conversations_open(users=",".join(dm_users))["channel"]["id"]
-        respond(f"Created a DM with the target user and allowlist members: <#{dm_channel}>")
-        client.chat_postMessage(
-            channel=allowlist_channel,
-            text=f"A new DM has been created: <#{dm_channel}>",
+        client.conversations_invite(
+            channel=private_channel, users=",".join(invite_users)
         )
     except Exception as e:
-        respond(f"Failed to create DM: {e}")
+        if e.response["error"] == "already_in_channel":
+            respond("You are already in this DM.")
+        else:
+            respond(f"Failed to invite users to the DM: {e}")
+        # Send a message to the allowlist channel with a button to join the DM
+        client.chat_postMessage(
+            channel=allowlist_channel,
+            text=f"A private channel has been created: <#{private_channel}> with <@{target_user}>. Click the button below to join.",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"A private channel has been created: <#{private_channel}> with <@{target_user}>. Click the button below to join.",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Join private channel",
+                            },
+                            "action_id": "join_private_channel",
+                            "value": private_channel,
+                        }
+                    ],
+                },
+            ],
+        )
+
+@app.action("join_private_channel")
+def join_dm(ack, body, client: WebClient):
+    ack()
+    user_id = body["user"]["id"]
+    private_channel = body["actions"][0]["value"]
+
+    try:
+        # Invite the user to the DM channel
+        client.conversations_invite(channel=private_channel, users=user_id)
+        client.chat_postEphemeral(
+            channel=private_channel,
+            user=user_id,
+            text="You have been added to the channel.",
+        )
+    except Exception as e:
+        if e.response["error"] == "already_in_channel":
+            client.chat_postEphemeral(
+                channel=private_channel,
+                user=user_id,
+                text="You are already in this DM.",
+            )
+        else:
+            # Send an error message to the user
+            client.chat_postEphemeral(
+                channel=body["channel"]["id"],
+                user=user_id,
+                text=f"Failed to join channel: {e}",
+            )
 
 @app.command(utils.apply_command_prefix("help"))
 def help_command(ack, respond: Respond):
