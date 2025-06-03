@@ -47,9 +47,7 @@ def handle_submission(ack, body, say, client: WebClient):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "This report has been submitted."
-                        if user_selection == "with_username"
-                        else "This report has been submitted anonymously.",
+                        "text": f"{'This report has been submitted' if user_selection == "with_username" else 'This report has been submitted anonymously'}. We've received your report and should get back to you within a couple hours.",
                     },
                 }
             ],
@@ -75,7 +73,7 @@ def handle_submission(ack, body, say, client: WebClient):
         client.chat_postEphemeral(
             channel=message_record["fields"]["dm_channel"],
             user=user_id,
-            text="Message content forwarded. Any replies to the forwarded message will be sent back to you as a threaded reply.",
+            text="Message content forwarded. Any replies to the forwarded message will be sent back to you as a threaded reply. If you wish to add additional context, reply in the thread.",
         )
     else:
         say("Please select an option before submitting.")
