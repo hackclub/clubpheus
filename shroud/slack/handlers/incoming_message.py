@@ -7,6 +7,8 @@ from shroud.utils import db, utils
 from slack_bolt.context.respond import Respond
 from pydantic import BaseModel, StringConstraints, computed_field
 from typing import Annotated, Any
+import datetime
+
 
 
 class ValidationRegexs(Enum):
@@ -29,7 +31,7 @@ class MessageEvent(BaseModel):
 
     class Subtypes(str, Enum):
         message_changed = "message_changed"
-        # file_share = "file_share"
+        file_share = "file_share"
         message_deleted = "message_deleted"
         normal = "normal"
         other = "other"
@@ -49,7 +51,7 @@ class MessageEvent(BaseModel):
     @property
     def record(self) -> dict:
         fetched_result = db.get_message_by_ts(self.thread_ts or self.ts)
-        return None if fetched_result is None else fetched_result["fields"]
+        return None if fetched_result is None else fetched_result
 
     class Target(BaseModel):
         channel: Annotated[
@@ -114,6 +116,12 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
         return
 
     match subtype:
+        case MessageEvent.Subtypes.file_share:
+            client.chat_postMessage(
+                channel=event["channel"],
+                thread_ts=event.get("thread_ts", event.get("ts")),
+                text="File uploads are not supported yet. Please re-send the message with the file uploaded to something like https://catbox.moe/ and then send the link in your message. This message was not forwarded.",
+            )
         case MessageEvent.Subtypes.normal:
             message = MessageEvent(
                 channel=event["channel"],
@@ -171,13 +179,13 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
             channel=settings.channel,
             text=message.content,
             attachments=message.attachments,
-            thread_ts=message.record["forwarded_ts"],
+            thread_ts=message.record["fields"]["forwarded_ts"],
         )
     elif message.record is not None and message.is_dm is False:
         if message.content.startswith("!"):
             client.chat_postEphemeral(
-                channel=message.record["dm_channel"],
-                thread_ts=message.record["dm_ts"],
+                channel=message.record["fields"]["dm_channel"],
+                thread_ts=message.record["fields"]["dm_ts"],
                 user=message.user,
                 text="`!` does nothing. By default, messages are not forwarded unless `?` is prepended to them.",
             )
@@ -185,12 +193,26 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
         prefix_info = message.get_prefix_info
         if prefix_info.should_forward:
             client.chat_postMessage(
-                channel=message.record["dm_channel"],
-                thread_ts=message.record["dm_ts"],
+                channel=message.record["fields"]["dm_channel"],
+                thread_ts=message.record["fields"]["dm_ts"],
                 text=prefix_info.content_without_prefix,
                 username=utils.get_name(message.user, client),
                 icon_url=utils.get_profile_picture_url(message.user, client),
             )
+            if (
+                not message.record["fields"].get("reply_time")
+            ):
+                # This is the first reply to the forwarded message
+                forwarded_time = message.record["fields"].get("forwarded_ts")
+                reply_time = message.ts
+                try:
+                    fwd_dt = datetime.datetime.fromtimestamp(float(forwarded_time), tz=datetime.timezone.utc)
+                    reply_dt = datetime.datetime.fromtimestamp(float(reply_time), tz=datetime.timezone.utc)
+                    time_diff = (reply_dt - fwd_dt).total_seconds()
+                    formatted_time = str(datetime.timedelta(seconds=int(time_diff)))
+                    db.get_table().update(message.record["id"], {"reply_time": formatted_time})
+                except Exception as e:
+                    print(f"Failed to record first reply time diff: {e}")
         else:
             print("INFO: received a message not prefixed with `!` or `?`; ignoring it.")
     else:
