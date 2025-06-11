@@ -22,21 +22,25 @@ oauth_config:
     bot:
       - channels:history
       - channels:join
+      - channels:read
       - chat:write
       - chat:write.customize
       - commands
       - groups:history
-      - im:history
-      - users:read
-      - groups:write
-      - channels:read
       - groups:read
-      - mpim:write
+      - groups:write
+      - im:history
+      - im:write
+      - reactions:read
+      - users:read
+      - reactions:write
 settings:
   event_subscriptions:
     bot_events:
       - message.groups
       - message.im
+      - reaction_added
+      - reaction_removed
   interactivity:
     is_enabled: true
   org_deploy_enabled: false
