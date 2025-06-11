@@ -1,9 +1,9 @@
 from slack_sdk import WebClient
 from shroud.slack import app
 from shroud.utils import db
+import datetime
 
 # Listen for reaction_added events to remove :hourglass: if :white_check_mark: or :x: is added
-
 @app.event("reaction_added")
 def handle_reaction_added(event, client: WebClient):
     reaction = event.get("reaction")
@@ -25,6 +25,17 @@ def handle_reaction_added(event, client: WebClient):
             )
         except Exception as e:
             print(f"Failed to remove :hourglass: reaction: {e}")
+        # Set resolve_time in db to the time difference between forward and now
+        try:
+            forwarded_time = record["fields"].get("forwarded_ts")
+            if forwarded_time:
+                fwd_dt = datetime.datetime.fromtimestamp(float(forwarded_time), tz=datetime.timezone.utc)
+                now_dt = datetime.datetime.now(datetime.timezone.utc)
+                time_diff = (now_dt - fwd_dt).total_seconds()
+                formatted_time = str(datetime.timedelta(seconds=int(time_diff)))
+                db.get_table().update(record["id"], {"resolve_time": formatted_time})
+        except Exception as e:
+            print(f"Failed to set resolve_time: {e}")
 
 # Listen for reaction_removed events to re-add :hourglass: if :white_check_mark: or :x: is removed and neither is present
 @app.event("reaction_removed")
@@ -53,5 +64,10 @@ def handle_reaction_removed(event, client: WebClient):
                     name="hourglass",
                     timestamp=ts
                 )
+                # Set resolve_time in db to blank string
+                try:
+                    db.get_table().update(record["id"], {"resolve_time": ""})
+                except Exception as e:
+                    print(f"Failed to reset resolve_time: {e}")
         except Exception as e:
             print(f"Failed to re-add :hourglass: reaction: {e}")
