@@ -117,11 +117,21 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
 
     match subtype:
         case MessageEvent.Subtypes.file_share:
-            client.chat_postMessage(
+            message = MessageEvent(
                 channel=event["channel"],
-                thread_ts=event.get("thread_ts", event.get("ts")),
-                text="File uploads are not supported yet. Please re-send the message with the file uploaded to something like https://catbox.moe/ and then send the link in your message. This message was not forwarded.",
+                thread_ts=event.get("thread_ts"),
+                ts=event["ts"],
+                user=event.get("user"),
+                content=event.get("text", ""),
+                subtype=subtype,
             )
+            if message.record:
+                client.chat_postMessage(
+                    channel=event["channel"],
+                    thread_ts=event.get("thread_ts", event.get("ts")),
+                    text="File uploads are not supported yet. Please re-send the message with the file uploaded to something like https://catbox.moe/ and then send the link in your message. This message was not forwarded.",
+                )
+            return
         case MessageEvent.Subtypes.normal:
             message = MessageEvent(
                 channel=event["channel"],
