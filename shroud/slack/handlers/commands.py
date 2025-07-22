@@ -23,6 +23,16 @@ def create_dm(ack, respond: Respond, client: WebClient, command):
     user_id = command["user_id"]
     target_user = command["text"].strip()
 
+    # Check if user is in the allowlist channel
+    try:
+        members = client.conversations_members(channel=allowlist_channel)["members"]
+        if user_id not in members:
+            respond("You must be a member of the allowlist channel to use this command.")
+            return
+    except Exception as e:
+        respond(f"Failed to verify channel membership: {e}")
+        return
+
     # Extract the user ID from the format <@U1234|user>
     if target_user.startswith("<@") and "|" in target_user:
         target_user = target_user[2:].split("|")[0]
