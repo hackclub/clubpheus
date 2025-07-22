@@ -125,7 +125,7 @@ def handle_message(event, say: Say, client: WebClient, respond: Respond, ack):
                 content=event.get("text", ""),
                 subtype=subtype,
             )
-            if message.record:
+            if message.record and message.is_dm:
                 client.chat_postMessage(
                     channel=event["channel"],
                     thread_ts=event.get("thread_ts", event.get("ts")),
