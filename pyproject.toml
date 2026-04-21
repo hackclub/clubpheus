@@ -10,7 +10,7 @@ include = ["manifest.yml"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-python-dotenv = "^1.0.1"
+python-dotenv = "^1.2.2"
 slack-bolt = "^1.20.0"
 dynaconf = "^3.2.6"
 pyairtable = "^2.3.3"
